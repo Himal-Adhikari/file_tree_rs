@@ -88,6 +88,10 @@ fn display_tree(files: Vec<Files>, position: usize, mut are_final: &mut Vec<bool
                         }
                     };
                     println!("{} {}", ending_pattern, dir.name.into_string().unwrap());
+                    match are_final.get(position + 1) {
+                        Some(_) => (),
+                        None => are_final.push(false), // Default value, will be changed later
+                    }
                     display_tree(dir.files, position + 1, are_final);
                 } else {
                     if file_position == total_files {
@@ -107,6 +111,10 @@ fn display_tree(files: Vec<Files>, position: usize, mut are_final: &mut Vec<bool
                         ending_pattern,
                         dir.name.into_string().unwrap()
                     );
+                    match are_final.get(position + 1) {
+                        Some(_) => (),
+                        None => are_final.push(false), // Default value, will be changed later
+                    }
                     display_tree(dir.files, position + 1, are_final);
                 }
             }
