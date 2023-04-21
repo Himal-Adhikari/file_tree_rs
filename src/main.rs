@@ -28,7 +28,12 @@ fn main() {
         Err(why) => eprintln!("{why}"),
         Ok(paths) => {
             let files = get_all_files(paths);
-            display_tree(files, 0);
+            let mut are_final = if files.len() == 1 {
+                vec![true]
+            } else {
+                vec![false]
+            };
+            display_tree(files, 0, &mut are_final);
         }
     }
 }
@@ -48,7 +53,7 @@ fn get_all_files(paths: ReadDir) -> Vec<Files> {
     res
 }
 
-fn display_tree(files: Vec<Files>, position: usize) {
+fn display_tree(files: Vec<Files>, position: usize, mut are_final: &mut Vec<bool>) {
     let mut file_position = 1;
     let total_files = files.len();
     for file in files {
@@ -61,26 +66,33 @@ fn display_tree(files: Vec<Files>, position: usize) {
                         "├──"
                     }
                 };
-                match position {
-                    0 => {
-                        println!("{} {}", ending_pattern, file_name.into_string().unwrap());
-                    }
-                    _ => {
-                        println!(
-                            "│{}{} {}",
-                            " ".repeat((position - 1) * 3 + 2),
-                            ending_pattern,
-                            file_name.into_string().unwrap()
-                        );
-                    }
+                if position == 0 {
+                    println!("{} {}", ending_pattern, file_name.into_string().unwrap());
+                } else {
+                    println!(
+                        "│{}{} {}",
+                        " ".repeat((position - 1) * 3 + 2),
+                        ending_pattern,
+                        file_name.into_string().unwrap()
+                    );
                 }
             }
-            Files::Directory(dir) => match position {
-                0 => {
-                    println!("├── {}", dir.name.into_string().unwrap());
-                    display_tree(dir.files, position + 1);
-                }
-                _ => {
+            Files::Directory(dir) => {
+                if position == 0 {
+                    let ending_pattern = {
+                        if file_position == total_files {
+                            are_final[position] = true;
+                            "└──"
+                        } else {
+                            "├── "
+                        }
+                    };
+                    println!("{} {}", ending_pattern, dir.name.into_string().unwrap());
+                    display_tree(dir.files, position + 1, are_final);
+                } else {
+                    if file_position == total_files {
+                        are_final[position] = true;
+                    }
                     let no_of_files = dir.files.len();
                     let ending_pattern = {
                         if no_of_files > 0 || file_position == total_files {
@@ -95,9 +107,9 @@ fn display_tree(files: Vec<Files>, position: usize) {
                         ending_pattern,
                         dir.name.into_string().unwrap()
                     );
-                    display_tree(dir.files, position + 1);
+                    display_tree(dir.files, position + 1, are_final);
                 }
-            },
+            }
         }
         file_position += 1;
     }
