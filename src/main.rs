@@ -3,6 +3,18 @@ use std::{
     fs::{self, DirEntry, ReadDir},
 };
 
+use clap::Parser;
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    path: Option<String>,
+
+    /// Show hidden files
+    #[arg(short = 'a', long = "all")]
+    hidden: bool,
+}
+
 #[derive(Debug)]
 struct Dir {
     name: OsString,
@@ -10,10 +22,10 @@ struct Dir {
 }
 
 impl Dir {
-    fn new(name: OsString, entry: DirEntry) -> Self {
-        let dir_name = entry.path();
-        let files = get_all_files(fs::read_dir(dir_name).unwrap());
-        Self { name, files }
+    fn new(name: OsString, entry: DirEntry, read_hidden_files: bool) -> std::io::Result<Self> {
+        let file = fs::read_dir(entry.path())?;
+        let files = get_all_files(file, read_hidden_files);
+        Ok(Self { name, files })
     }
 }
 
@@ -24,10 +36,17 @@ enum Files {
 }
 
 fn main() {
-    match fs::read_dir("") {
+    let cli = Cli::parse();
+
+    let path = match cli.path {
+        Some(path) => path,
+        None => String::from(""),
+    };
+
+    match fs::read_dir(path) {
         Err(why) => eprintln!("{why}"),
         Ok(paths) => {
-            let files = get_all_files(paths);
+            let files = get_all_files(paths, cli.hidden);
             let mut are_final = if files.len() == 1 {
                 vec![true]
             } else {
@@ -38,22 +57,51 @@ fn main() {
     }
 }
 
-fn get_all_files(paths: ReadDir) -> Vec<Files> {
+fn get_all_files(paths: ReadDir, read_hidden_files: bool) -> Vec<Files> {
     let mut res = Vec::new();
     for path in paths {
-        let entry = path.unwrap();
+        let entry = match path {
+            Ok(entry) => entry,
+            Err(e) => {
+                eprintln!("{e}");
+                continue;
+            }
+        };
         let file_name = entry.file_name();
-        let file_type = entry.file_type().unwrap();
+        let file_type = match entry.file_type() {
+            Ok(file) => file,
+            Err(e) => {
+                eprintln!(
+                    "Couldn't detect file_type of {}: {}",
+                    file_name.into_string().unwrap(),
+                    e
+                );
+                continue;
+            }
+        };
+        if file_name.to_str().unwrap().starts_with('.') && !read_hidden_files {
+            continue;
+        }
         if file_type.is_file() {
             res.push(Files::File(file_name));
         } else if file_type.is_dir() {
-            res.push(Files::Directory(Dir::new(file_name, entry)));
+            match Dir::new(file_name.clone(), entry, read_hidden_files) {
+                Ok(dir) => {
+                    res.push(Files::Directory(dir));
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Couldn't read contents of directory {}: {e}",
+                        file_name.into_string().unwrap()
+                    );
+                }
+            }
         }
     }
     res
 }
 
-fn display_tree(files: Vec<Files>, position: usize, mut are_final: &mut Vec<bool>) {
+fn display_tree(files: Vec<Files>, position: usize, are_final: &mut Vec<bool>) {
     let mut file_position = 1;
     let total_files = files.len();
     for file in files {
@@ -68,30 +116,14 @@ fn display_tree(files: Vec<Files>, position: usize, mut are_final: &mut Vec<bool
                         "├──"
                     }
                 };
-                if position == 0 {
-                    println!("{} {}", ending_pattern, file_name.into_string().unwrap());
-                } else {
-                    let mut res = String::new();
-                    for &bl in are_final.iter().take(position) {
-                        if !bl {
-                            res.push_str("│  ");
-                        } else {
-                            res.push_str("   ");
-                        }
+                for &is_final in are_final.iter().take(position) {
+                    if is_final {
+                        print!("   ")
+                    } else {
+                        print!("│  ")
                     }
-                    println!(
-                        "{}{} {}",
-                        res,
-                        ending_pattern,
-                        file_name.into_string().unwrap()
-                    );
-                    // println!(
-                    //     "│{}{} {}",
-                    //     " ".repeat((position - 1) * 3 + 2),
-                    //     ending_pattern,
-                    //     file_name.into_string().unwrap()
-                    // );
                 }
+                println!("{} {}", ending_pattern, file_name.into_string().unwrap());
             }
             Files::Directory(dir) => {
                 if position == 0 {
@@ -105,11 +137,8 @@ fn display_tree(files: Vec<Files>, position: usize, mut are_final: &mut Vec<bool
                         }
                     };
                     println!("{} {}", ending_pattern, dir.name.into_string().unwrap());
-                    match are_final.get(position + 1) {
-                        Some(_) => (),
-                        None => {
-                            are_final.push(dir.files.len() > 1);
-                        } // Default value, will be changed later
+                    if are_final.get(position + 1).is_none() {
+                        are_final.push(dir.files.len() > 1);
                     }
                     display_tree(dir.files, position + 1, are_final);
                 } else {
@@ -127,38 +156,17 @@ fn display_tree(files: Vec<Files>, position: usize, mut are_final: &mut Vec<bool
                             "├──"
                         }
                     };
-                    let mut starting_pattern = String::new();
                     for &is_final in are_final.iter().take(position) {
-                        if !is_final {
-                            starting_pattern.push_str("│  ");
+                        if is_final {
+                            print!("   ")
                         } else {
-                            starting_pattern.push_str("   ");
+                            print!("│  ")
                         }
                     }
 
-                    println!(
-                        "{}{} {}",
-                        starting_pattern,
-                        ending_pattern,
-                        dir.name.into_string().unwrap()
-                    );
-                    // let starting_char = {
-                    //     if are_final[0] {
-                    //         " "
-                    //     } else {
-                    //         "│"
-                    //     }
-                    // };
-                    // println!(
-                    //     "{}{}{} {}",
-                    //     starting_char,
-                    //     " ".repeat((position - 1) * 3 + 2),
-                    //     ending_pattern,
-                    //     dir.name.into_string().unwrap()
-                    // );
-                    match are_final.get(position + 1) {
-                        Some(_) => (),
-                        None => are_final.push(false), // Default value, will be changed later
+                    println!("{} {}", ending_pattern, dir.name.into_string().unwrap());
+                    if are_final.get(position + 1).is_none() {
+                        are_final.push(dir.files.len() > 1);
                     }
                     display_tree(dir.files, position + 1, are_final);
                 }
