@@ -1,0 +1,14 @@
+#[derive(Debug)]
+struct Dir {
+    name: OsString,
+    files: Vec<Files>,
+}
+
+impl Dir {
+    fn new(name: OsString) -> Self {
+        Self {
+            name,
+            files: Vec::new(),
+        }
+    }
+}
