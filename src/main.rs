@@ -43,8 +43,8 @@ fn main() {
         None => String::from(""),
     };
 
-    match fs::read_dir(path) {
-        Err(why) => eprintln!("{why}"),
+    match fs::read_dir(&path) {
+        Err(why) => eprintln!("Invalid directory name \"{path}\": {why}"),
         Ok(paths) => {
             let files = get_all_files(paths, cli.hidden);
             let mut are_final = if files.len() == 1 {
@@ -112,7 +112,6 @@ fn display_tree(files: Vec<Files>, position: usize, are_final: &mut Vec<bool>) {
                         are_final[position] = true;
                         "└──"
                     } else {
-                        are_final[position] = false;
                         "├──"
                     }
                 };
@@ -126,50 +125,33 @@ fn display_tree(files: Vec<Files>, position: usize, are_final: &mut Vec<bool>) {
                 println!("{} {}", ending_pattern, file_name.into_string().unwrap());
             }
             Files::Directory(dir) => {
-                if position == 0 {
-                    let ending_pattern = {
-                        if file_position == total_files {
-                            are_final[position] = true;
-                            "└──"
-                        } else {
-                            are_final[position] = false;
-                            "├──"
-                        }
-                    };
-                    println!("{} {}", ending_pattern, dir.name.into_string().unwrap());
-                    if are_final.get(position + 1).is_none() {
-                        are_final.push(dir.files.len() > 1);
-                    }
-                    display_tree(dir.files, position + 1, are_final);
+                if file_position == total_files {
+                    are_final[position] = true;
                 } else {
-                    if file_position == total_files {
-                        are_final[position] = true;
-                    } else {
-                        are_final[position] = false;
-                    }
-                    let no_of_files = dir.files.len();
-                    let ending_pattern = {
-                        if (no_of_files > 0 && are_final[position]) || file_position == total_files
-                        {
-                            "└──"
-                        } else {
-                            "├──"
-                        }
-                    };
-                    for &is_final in are_final.iter().take(position) {
-                        if is_final {
-                            print!("   ")
-                        } else {
-                            print!("│  ")
-                        }
-                    }
-
-                    println!("{} {}", ending_pattern, dir.name.into_string().unwrap());
-                    if are_final.get(position + 1).is_none() {
-                        are_final.push(dir.files.len() > 1);
-                    }
-                    display_tree(dir.files, position + 1, are_final);
+                    are_final[position] = false;
                 }
+                let no_of_files = dir.files.len();
+                let ending_pattern = {
+                    if file_position == total_files || (no_of_files > 0 && are_final[position]) {
+                        "└──"
+                    } else {
+                        "├──"
+                    }
+                };
+                for &is_final in are_final.iter().take(position) {
+                    if is_final {
+                        print!("   ")
+                    } else {
+                        print!("│  ")
+                    }
+                }
+
+                println!("{} {}", ending_pattern, dir.name.into_string().unwrap());
+                match are_final.get(position + 1) {
+                    None => are_final.push(dir.files.len() > 1),
+                    Some(_) => are_final[position + 1] = dir.files.len() > 1,
+                }
+                display_tree(dir.files, position + 1, are_final);
             }
         }
         file_position += 1;
