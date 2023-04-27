@@ -32,6 +32,7 @@ impl Dir {
 enum Files {
     File(OsString),
     Directory(Dir),
+    Symlink(OsString),
 }
 
 fn main() {
@@ -46,11 +47,7 @@ fn main() {
         Err(why) => eprintln!("Invalid directory name \"{path}\": {why}"),
         Ok(paths) => {
             let files = get_all_files(paths, cli.hidden);
-            let mut are_final = if files.len() == 1 {
-                vec![true]
-            } else {
-                vec![false]
-            };
+            let mut are_final = vec![files.len() == 1];
             display_tree(files, 0, &mut are_final);
         }
     }
@@ -66,7 +63,7 @@ fn get_all_files(paths: ReadDir, read_hidden_files: bool) -> Vec<Files> {
                 continue;
             }
         };
-        let file_name = entry.file_name();
+        let mut file_name = entry.file_name();
         let file_type = match entry.file_type() {
             Ok(file) => file,
             Err(e) => {
@@ -95,6 +92,22 @@ fn get_all_files(paths: ReadDir, read_hidden_files: bool) -> Vec<Files> {
                     );
                 }
             }
+        } else if file_type.is_symlink() {
+            let link_path = match std::fs::read_link(entry.path()) {
+                Ok(link_path) => link_path,
+                Err(e) => {
+                    eprintln!(
+                        "Couldn't read symlink {}: {}",
+                        entry.path().to_string_lossy(),
+                        e
+                    );
+                    continue;
+                }
+            };
+            let link_path = link_path.into_os_string();
+            file_name.push(" => ");
+            file_name.push(link_path);
+            res.push(Files::Symlink(file_name));
         }
     }
     res
@@ -105,7 +118,7 @@ fn display_tree(files: Vec<Files>, position: usize, are_final: &mut Vec<bool>) {
     let total_files = files.len();
     for file in files {
         match file {
-            Files::File(file_name) => {
+            Files::File(file_name) | Files::Symlink(file_name) => {
                 let ending_pattern = {
                     if file_position == total_files {
                         are_final[position] = true;
