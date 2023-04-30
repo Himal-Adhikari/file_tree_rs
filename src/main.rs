@@ -1,6 +1,7 @@
 use std::{
     ffi::OsString,
     fs::{self, DirEntry, ReadDir},
+    io::{self, Write},
 };
 
 use clap::Parser;
@@ -119,46 +120,50 @@ fn display_tree(files: Vec<Files>, position: usize, are_final: &mut Vec<bool>) {
     for file in files {
         match file {
             Files::File(file_name) | Files::Symlink(file_name) => {
-                let ending_pattern = {
-                    if file_position == total_files {
-                        are_final[position] = true;
-                        "└──"
-                    } else {
-                        "├──"
-                    }
+                let mut buffer = String::new();
+                let ending_pattern = if file_position == total_files {
+                    are_final[position] = true;
+                    "└── "
+                } else {
+                    "├── "
                 };
                 for &is_final in are_final.iter().take(position) {
                     if is_final {
-                        print!("   ")
+                        buffer.push_str("   ");
                     } else {
-                        print!("│  ")
+                        buffer.push_str("│  ");
                     }
                 }
-                println!("{} {}", ending_pattern, file_name.into_string().unwrap());
+                buffer.push_str(ending_pattern);
+                buffer.push_str(&file_name.into_string().unwrap());
+                buffer.push('\n');
+                print_buffer(buffer);
             }
             Files::Directory(dir) => {
+                let mut buffer = String::new();
                 if file_position == total_files {
                     are_final[position] = true;
                 } else {
                     are_final[position] = false;
                 }
                 let no_of_files = dir.files.len();
-                let ending_pattern = {
+                let ending_pattern =
                     if file_position == total_files || (no_of_files > 0 && are_final[position]) {
-                        "└──"
+                        "└── "
                     } else {
-                        "├──"
-                    }
-                };
+                        "├── "
+                    };
                 for &is_final in are_final.iter().take(position) {
                     if is_final {
-                        print!("   ")
+                        buffer.push_str("   ");
                     } else {
-                        print!("│  ")
+                        buffer.push_str("│  ");
                     }
                 }
-
-                println!("{} {}", ending_pattern, dir.name.into_string().unwrap());
+                buffer.push_str(ending_pattern);
+                buffer.push_str(&dir.name.into_string().unwrap());
+                buffer.push('\n');
+                print_buffer(buffer);
                 match are_final.get(position + 1) {
                     None => are_final.push(dir.files.len() > 1),
                     Some(_) => are_final[position + 1] = dir.files.len() > 1,
@@ -167,5 +172,15 @@ fn display_tree(files: Vec<Files>, position: usize, are_final: &mut Vec<bool>) {
             }
         }
         file_position += 1;
+    }
+}
+
+fn print_buffer(buffer: String) {
+    if let Err(e) = io::stdout().write_all(buffer.as_bytes()) {
+        if e.kind() == io::ErrorKind::BrokenPipe {
+            std::process::exit(0);
+        } else {
+            eprintln!("{e:#?}");
+        }
     }
 }
