@@ -40,7 +40,7 @@ fn main() {
 
     let path = match cli.path {
         Some(path) => path,
-        None => String::from(""),
+        None => String::from("."),
     };
 
     match fs::read_dir(&path) {
