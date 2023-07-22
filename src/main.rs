@@ -141,11 +141,7 @@ fn display_tree(files: Vec<Files>, position: usize, are_final: &mut Vec<bool>) {
             }
             Files::Directory(dir) => {
                 let mut buffer = String::new();
-                if file_position == total_files {
-                    are_final[position] = true;
-                } else {
-                    are_final[position] = false;
-                }
+                are_final[position] = file_position == total_files;
                 let no_of_files = dir.files.len();
                 let ending_pattern =
                     if file_position == total_files || (no_of_files > 0 && are_final[position]) {
